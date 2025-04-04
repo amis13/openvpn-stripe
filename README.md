@@ -1,113 +1,143 @@
-# Guía Completa para Crear tu Propio Servidor OpenVPN con Subscripciones Mensuales Usando Stripe
+# 🔧 Monta tu propio servidor VPN con OpenVPN + Stripe
 
-Este proyecto te permite montar tu propio servidor OpenVPN en un VPS Ubuntu 22.04/24.04 con:
-- Instalador automático.
-- Creación de clientes por suscripción mensual.
-- Webhook para gestionar pagos y revocaciones automáticas.
+Este proyecto te permite desplegar un servidor VPN con autenticación de suscripción mensual mediante [Stripe](https://stripe.com). Los clientes reciben automáticamente su archivo `.ovpn` por correo tras el pago, y si no renuevan, el acceso es revocado automáticamente.
 
 ---
 
-## Requisitos
+## 📁 Estructura del Proyecto
 
-- VPS Ubuntu 22.04 o 24.04
-- Dominio o IP estática (opcional pero recomendado)
-- Cuenta de Stripe y claves API
-
----
-
-## Instalación del Servidor VPN
-
-1. **Conéctate al VPS:**
-```bash
-ssh root@TU_IP
 ```
-
-2. **Descarga el instalador:**
-```bash
-git clone https://github.com/tuusuario/openvpn-stripe
-cd openvpn-stripe
-chmod +x installer.sh
-```
-
-3. **Ejecuta el instalador:**
-```bash
-./installer.sh
-```
-
-4. **Cuando finalice, crea un cliente manual si lo deseas:**
-```bash
-./installer.sh add-client cliente1
+/
+├── auto-vpn.sh                 # Instalador y gestor de clientes OpenVPN
+├── webhook.py                  # Webhook Flask para pagos con Stripe
+├── revoke.sh                   # Revoca certificados
+├── subscriptions.json          # Base de datos de suscripciones
+├── /root/clients-configs/      # Archivos .ovpn de los clientes
+└── /root/openvpn-ca/           # Infraestructura Easy-RSA
 ```
 
 ---
 
-## Configuración del Webhook de Stripe
+## 🛠️ Requisitos
 
-1. **Edita `Stripe Openvpn Webhook.py`:**
-- Coloca tu `STRIPE_SECRET_KEY` y `WEBHOOK_SECRET`.
+- Ubuntu 22.04 o 24.04
+- Cuenta de Stripe con producto/plan mensual creado
+- Acceso root
+- IP pública o dominio
 
-2. **Instala dependencias:**
+Instala dependencias:
+
 ```bash
-apt install python3-flask python3-pip -y
-pip3 install stripe
+sudo apt update
+sudo apt install -y openvpn easy-rsa ufw curl iptables-persistent net-tools mutt python3-pip
+pip3 install flask stripe
 ```
 
-3. **Ejecuta el webhook:**
+---
+
+## ⚖️ Instalación OpenVPN
+
+Ejecuta el script auto instalador:
+
 ```bash
-python3 Stripe\ Openvpn\ Webhook.py
+chmod +x auto-vpn.sh
+sudo ./auto-vpn.sh
 ```
-(O puedes ponerlo como servicio o usar `tmux`)
 
-4. **Configura el endpoint en Stripe:**
-- URL: `https://tu_dominio.com/webhook`
-- Eventos: `invoice.payment_succeeded`, `invoice.payment_failed`
+Para añadir clientes manualmente:
 
----
-
-## Automatizar Revocación de Clientes Expirados
-
-Crea un cron job:
 ```bash
-crontab -e
+sudo ./auto-vpn.sh add-client nombre_cliente
 ```
-Y añade:
+
+---
+
+## 🔐 Webhook de Stripe
+
+1. Renombra y ejecuta:
+
 ```bash
-0 * * * * curl -X POST http://localhost:4242/revoke-expired
+python3 webhook.py
 ```
-Esto revisa cada hora las suscripciones caducadas.
+
+2. Para modo servicio, crea:
+
+```ini
+# /etc/systemd/system/stripe-webhook.service
+[Unit]
+Description=Stripe Webhook para OpenVPN
+After=network.target
+
+[Service]
+ExecStart=/usr/bin/python3 /root/VPN/scripts/webhook.py
+WorkingDirectory=/root/VPN/scripts
+Restart=always
+User=root
+
+[Install]
+WantedBy=multi-user.target
+```
+
+Activa:
+
+```bash
+sudo systemctl daemon-reexec
+sudo systemctl daemon-reload
+sudo systemctl enable stripe-webhook
+sudo systemctl start stripe-webhook
+```
 
 ---
 
-## Enviar Archivos VPN por Correo
+## 💳 Configura Stripe
 
-El webhook usa `mutt` para enviar el archivo `.ovpn` generado tras el pago:
-
-Asegúrate de configurar `/etc/ssmtp/ssmtp.conf` o Postfix para usar SMTP de Gmail (con App Password si es necesario).
-
----
-
-## Seguridad y Buenas Prácticas
-
-- Los clientes se generan con claves propias.
-- Se usa `tls-crypt` para cifrado extra.
-- El script bloquea acceso tras caducidad.
-- Límites de conexiones y UFW están aplicados.
+1. Crea un producto con suscripción mensual
+2. Ve a Developers → Webhooks
+3. Endpoint: `http://TU_IP_O_DOMINIO:4242/webhook`
+4. Copia la "Signing secret" y colócala en `webhook.py`
+5. Usa enlaces Checkout de Stripe para vender la VPN
 
 ---
 
-## TODO y Mejoras Futuras
+## 📧 Envío automático por correo
 
-- Panel web para visualizar clientes activos
-- Soporte para WireGuard
-- Logs enriquecidos y notificaciones Telegram
+Crea `~/.muttrc` para Gmail:
+
+```bash
+set from = "tucorreo@gmail.com"
+set realname = "VPN Server"
+set smtp_url = "smtp://tucorreo@gmail.com@smtp.gmail.com:587/"
+set smtp_pass = "clave_app_o_contraseña"
+```
 
 ---
 
-## Licencia
+## 🔄 Revocar clientes vencidos
 
-MIT. Usa y mejora libremente. Crédito opcional si lo compartes ;)
+El webhook expone `/revoke-expired`. Puedes automatizarlo con cron:
+
+```bash
+sudo crontab -e
+```
+
+Y agregar:
+
+```
+0 0 * * * curl -X POST http://localhost:4242/revoke-expired
+```
+
+Esto revoca clientes no renovados cada día a la medianoche.
 
 ---
 
-¡Listo! Con esto puedes vender acceso a tu VPN de forma automática.
+## 🚀 ¡Y listo!
 
+Tu servidor VPN está ahora completamente automatizado con Stripe. 
+
+Aceptas pagos, se crean clientes y se revocan al vencimiento.
+
+---
+
+✅ Autor: [Tu nombre]
+
+📁 Repositorio: [https://github.com/tuusuario/openvpn-stripe-server](https://github.com/tuusuario/openvpn-stripe-server)
