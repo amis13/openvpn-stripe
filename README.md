@@ -69,8 +69,8 @@ Description=Stripe Webhook para OpenVPN
 After=network.target
 
 [Service]
-ExecStart=/usr/bin/python3 /root/VPN/scripts/webhook.py
-WorkingDirectory=/root/VPN/scripts
+ExecStart=/usr/bin/python3 webhook.py
+WorkingDirectory=/root/openvpn-stripe
 Restart=always
 User=root
 
