@@ -138,6 +138,4 @@ Aceptas pagos, se crean clientes y se revocan al vencimiento.
 
 ---
 
-✅ Autor: [Tu nombre]
-
 📁 Repositorio: [https://github.com/tuusuario/openvpn-stripe-server](https://github.com/tuusuario/openvpn-stripe-server)
